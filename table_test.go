@@ -170,6 +170,54 @@ func TestLeadingIndentIsPreserved(t *testing.T) {
 	}
 }
 
+func TestCRLFPreserved(t *testing.T) {
+	in := "# doc\r\n\r\n|a|b|\r\n|-|-|\r\n|1|2|\r\n"
+	want := "# doc\r\n\r\n| a   | b   |\r\n| --- | --- |\r\n| 1   | 2   |\r\n"
+
+	got, _ := mustProcess(t, in, Options{})
+	if got != want {
+		t.Fatalf("got:\n%q\nwant:\n%q", got, want)
+	}
+	if strings.Contains(strings.ReplaceAll(got, "\r\n", ""), "\n") {
+		t.Fatalf("output contains a lone LF: %q", got)
+	}
+}
+
+func TestCRLFAlreadyFormattedIsUnchanged(t *testing.T) {
+	in := "# doc\r\n\r\n| a   | b   |\r\n| --- | --- |\r\n| 1   | 2   |\r\n"
+	got, changed := mustProcess(t, in, Options{})
+	if changed || got != in {
+		t.Fatalf("changed=%v got=%q want=%q", changed, got, in)
+	}
+}
+
+func TestMixedLineEndingsAreNotNormalized(t *testing.T) {
+	// Mixed endings are ambiguous; mdt must not silently rewrite the file.
+	in := "# doc\n\r\nplain line\r\n"
+	got, changed := mustProcess(t, in, Options{})
+	if changed || got != in {
+		t.Fatalf("changed=%v got=%q", changed, got)
+	}
+}
+
+func TestHasLoneLF(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"a\r\nb\r\n", false},
+		{"a\nb\n", true},
+		{"\n", true},
+		{"a\r\nb\n", true},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := hasLoneLF(c.in); got != c.want {
+			t.Fatalf("hasLoneLF(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
 func TestCRLFRejected(t *testing.T) {
 	// CRLF input should still parse: trailing \r is trimmed per cell.
 	in := "|a|b|\r\n|-|-|\r\n|1|2|\r\n"

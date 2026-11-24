@@ -37,6 +37,13 @@ type Table struct {
 // ProcessText reformats every table in src and reports whether anything changed.
 // Content inside fenced code blocks is never touched.
 func ProcessText(src string, opts Options) (string, bool) {
+	// A CRLF document must stay CRLF: rewriting the whole file to LF turns a
+	// one-table edit into a whole-file diff. Mixed endings are left as they are.
+	crlf := strings.Contains(src, "\r\n") && !hasLoneLF(src)
+	if crlf {
+		src = strings.ReplaceAll(src, "\r\n", "\n")
+	}
+
 	trailingNewline := strings.HasSuffix(src, "\n")
 	lines := strings.Split(src, "\n")
 	if trailingNewline && len(lines) > 0 && lines[len(lines)-1] == "" {
@@ -91,7 +98,21 @@ func ProcessText(src string, opts Options) (string, bool) {
 	if trailingNewline {
 		res += "\n"
 	}
+	if crlf {
+		res = strings.ReplaceAll(res, "\n", "\r\n")
+	}
 	return res, changed
+}
+
+// hasLoneLF reports whether s contains a newline that is not part of a CRLF
+// pair, which means the document is not uniformly CRLF.
+func hasLoneLF(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' && (i == 0 || s[i-1] != '\r') {
+			return true
+		}
+	}
+	return false
 }
 
 // parseBlock builds a Table from a header line, a delimiter line and body lines.

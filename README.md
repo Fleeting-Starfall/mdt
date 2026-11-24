@@ -81,6 +81,9 @@ mdt -s 3 -n leaderboard.md | sort -t'|' -k4 -nr
 - Tables inside fenced code blocks (```` ``` ```` or `~~~`) are skipped, so
   documentation that shows Markdown examples is safe.
 - Everything that is not a table is copied through byte for byte.
+- A uniformly CRLF file stays CRLF: previously a `-w` run on a Windows-style
+  file rewrote the reformatted tables with LF endings, producing a whole-file
+  diff. Files with mixed endings are left alone rather than normalized.
 
 ## Limitations
 
