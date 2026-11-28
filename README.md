@@ -46,6 +46,7 @@ With no files it reads standard input. Output goes to standard output unless
 | `-c` | check mode: exit 1 if any file would change      |
 | `-s` | sort body rows by the given 1-based column       |
 | `-n` | numeric instead of string comparison (with `-s`) |
+| `-m` | wrap cells wider than N display columns          |
 | `-q` | quiet: no per-file messages in check mode        |
 | `-V` | print the version                                |
 
@@ -80,6 +81,9 @@ mdt -s 3 -n leaderboard.md | sort -t'|' -k4 -nr
   alignment markers (`---`, `:--`, `--:`, `:-:`).
 - Tables inside fenced code blocks (```` ``` ```` or `~~~`) are skipped, so
   documentation that shows Markdown examples is safe.
+- With `-m N`, a cell wider than N display columns is wrapped onto several
+  lines joined by `<br>`, which is how GFM tables express a multi-line cell.
+  Wrapping breaks at spaces when it can and counts CJK as two columns.
 - Everything that is not a table is copied through byte for byte.
 - A uniformly CRLF file stays CRLF: previously a `-w` run on a Windows-style
   file rewrote the reformatted tables with LF endings, producing a whole-file

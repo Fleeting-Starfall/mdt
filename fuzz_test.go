@@ -23,10 +23,13 @@ func FuzzProcessText(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, src string) {
-		out, _ := ProcessText(src, Options{})
-		again, changed := ProcessText(out, Options{})
-		if changed || again != out {
-			t.Fatalf("not idempotent\nin:     %q\nfirst:  %q\nsecond: %q", src, out, again)
+		for _, maxWidth := range []int{0, 3, 6, 12, 40} {
+			out, _ := ProcessText(src, Options{MaxWidth: maxWidth})
+			again, changed := ProcessText(out, Options{MaxWidth: maxWidth})
+			if changed || again != out {
+				t.Fatalf("not idempotent at -m %d\nin:     %q\nfirst:  %q\nsecond: %q",
+					maxWidth, src, out, again)
+			}
 		}
 	})
 }

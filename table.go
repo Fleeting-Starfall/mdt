@@ -23,6 +23,9 @@ type Options struct {
 	SortCol int
 	// Numeric compares the sort column as numbers instead of strings.
 	Numeric bool
+	// MaxWidth caps every column at this many display columns. Wider cells are
+	// wrapped onto several lines joined by "<br>". Zero disables wrapping.
+	MaxWidth int
 }
 
 // Table is a parsed Markdown table: a header row, the alignment row, and body rows.
@@ -163,14 +166,25 @@ func (t *Table) Format(opts Options) string {
 		widths[i] = 3 // a delimiter needs at least "---"
 	}
 	for i, h := range t.Header {
-		if w := displayWidth(visible(h)); w > widths[i] {
+		if w := cellWidth(h); w > widths[i] {
 			widths[i] = w
 		}
 	}
 	for _, row := range rows {
 		for i := 0; i < n; i++ {
-			if w := displayWidth(visible(row[i])); w > widths[i] {
+			if w := cellWidth(row[i]); w > widths[i] {
 				widths[i] = w
+			}
+		}
+	}
+	if opts.MaxWidth > 0 {
+		limit := opts.MaxWidth
+		if limit < 3 {
+			limit = 3 // narrower than a delimiter row is not a table
+		}
+		for i := range widths {
+			if widths[i] > limit {
+				widths[i] = limit
 			}
 		}
 	}
@@ -181,7 +195,7 @@ func (t *Table) Format(opts Options) string {
 		b.WriteString("|")
 		for i := 0; i < n; i++ {
 			b.WriteString(" ")
-			b.WriteString(pad(cells[i], widths[i], t.Align[i]))
+			b.WriteString(renderCell(cells[i], widths[i], t.Align[i]))
 			b.WriteString(" |")
 		}
 		b.WriteString("\n")
@@ -222,21 +236,117 @@ func delimCell(width int, a Align) string {
 	}
 }
 
-// pad adds spaces to cell so its visible width becomes width.
-func pad(cell string, width int, a Align) string {
-	gap := width - displayWidth(visible(cell))
+// pad adds spaces to line so its visible width becomes width.
+func pad(line string, width int, a Align) string {
+	gap := width - displayWidth(visible(line))
 	if gap <= 0 {
-		return cell
+		return line
 	}
 	switch a {
 	case AlignRight:
-		return strings.Repeat(" ", gap) + cell
+		return strings.Repeat(" ", gap) + line
 	case AlignCenter:
 		left := gap / 2
-		return strings.Repeat(" ", left) + cell + strings.Repeat(" ", gap-left)
+		return strings.Repeat(" ", left) + line + strings.Repeat(" ", gap-left)
 	default:
-		return cell + strings.Repeat(" ", gap)
+		return line + strings.Repeat(" ", gap)
 	}
+}
+
+// brSeparator is how a cell stores the line breaks produced by wrapping.
+const brSeparator = "<br>"
+
+// splitCellLines splits a cell on the line breaks that wrapping introduced.
+func splitCellLines(cell string) []string {
+	if !strings.Contains(cell, brSeparator) {
+		return []string{cell}
+	}
+	return strings.Split(cell, brSeparator)
+}
+
+// cellWidth returns the display width of the widest line in a cell, which is
+// what the column has to be wide enough for.
+func cellWidth(cell string) int {
+	w := 0
+	for _, line := range splitCellLines(cell) {
+		if lw := displayWidth(visible(line)); lw > w {
+			w = lw
+		}
+	}
+	return w
+}
+
+// renderCell wraps a cell to width, pads every line and joins them back with
+// "<br>". Splitting on the separator first is what makes formatting idempotent:
+// a second pass sees the same lines and leaves them alone.
+func renderCell(cell string, width int, a Align) string {
+	var parts []string
+	for _, line := range splitCellLines(cell) {
+		for _, piece := range wrapLine(line, width) {
+			// Trim first: a cell is re-parsed with its padding stripped, so
+			// padding must not depend on the spaces that survived parsing.
+			// Without this a centred cell shifts by one on the second pass.
+			parts = append(parts, pad(strings.TrimSpace(piece), width, a))
+		}
+	}
+	return strings.Join(parts, brSeparator)
+}
+
+// wrapLine breaks line into pieces no wider than width display columns,
+// preferring to break at spaces and never splitting "\|".
+func wrapLine(line string, width int) []string {
+	if width <= 0 || displayWidth(visible(line)) <= width {
+		return []string{line}
+	}
+	var out []string
+	rest := line
+	for displayWidth(visible(rest)) > width {
+		cut := safeCut(rest, breakIndex(rest, width))
+		if cut <= 0 || cut >= len(rest) {
+			break
+		}
+		out = append(out, strings.TrimRight(rest[:cut], " "))
+		rest = strings.TrimLeft(rest[cut:], " ")
+		if rest == "" {
+			return out
+		}
+	}
+	return append(out, rest)
+}
+
+// breakIndex returns the byte offset in s where a line of at most width
+// display columns should be cut. It backs up to the last space in range when
+// there is one, and never separates a backslash from the pipe it escapes.
+func breakIndex(s string, width int) int {
+	var lastSpace, limit int
+	w := 0
+	for i, r := range s {
+		if r == ' ' {
+			lastSpace = i
+		}
+		rw := runeWidth(r)
+		if w+rw > width {
+			if lastSpace > 0 {
+				return lastSpace
+			}
+			if limit == 0 {
+				return i + len(string(r))
+			}
+			return limit
+		}
+		w += rw
+		limit = i + len(string(r))
+	}
+	return len(s)
+}
+
+// safeCut moves a cut that landed between a backslash and its pipe one byte
+// back, so an escaped pipe is never split across two lines.
+func safeCut(s string, cut int) int {
+	if cut > 0 && cut < len(s) && s[cut] == '|' && s[cut-1] == '\\' {
+		return cut - 1
+	}
+	return cut
 }
 
 // visible returns the text a reader sees inside a cell, so that escape

@@ -23,6 +23,7 @@ func run(args []string) int {
 		check   = fs.Bool("c", false, "check only: exit 1 if a file would change")
 		sortCol = fs.Int("s", 0, "sort body rows by 1-based column N")
 		numeric = fs.Bool("n", false, "compare numerically when sorting")
+		maxW    = fs.Int("m", 0, "wrap cells wider than N display columns")
 		quiet   = fs.Bool("q", false, "suppress output in check mode")
 		showVer = fs.Bool("V", false, "print version and exit")
 	)
@@ -43,6 +44,7 @@ examples:
   mdt -w README.md docs/*.md    # format files in place
   mdt -c README.md              # exit 1 if README.md is not formatted
   mdt -s 2 -n data.md           # sort rows by column 2, numerically
+  mdt -m 30 report.md           # wrap wide cells at 30 display columns
 
 exit codes:
   0  success (or, with -c, everything is already formatted)
@@ -70,7 +72,7 @@ exit codes:
 		return 2
 	}
 
-	opts := Options{SortCol: *sortCol, Numeric: *numeric}
+	opts := Options{SortCol: *sortCol, Numeric: *numeric, MaxWidth: *maxW}
 	if opts.SortCol < 0 {
 		fmt.Fprintln(os.Stderr, "mdt: -s must be a positive column number")
 		return 2
